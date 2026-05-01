@@ -5,11 +5,12 @@ Unit tests for 404-g Agent modules.
 import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from config.settings import Settings
+from config.settings import Settings, _get_int, _get_float
 from modules.tokens.detector import TokenDetector
 from modules.onchain.wallet_monitor import WalletMonitor
 from modules.sentiment.analyzer import SentimentAnalyzer
 from agents.alpha_scout import AlphaScoutAgent
+from utils.logger import setup_logger
 
 
 @pytest.fixture
@@ -214,3 +215,69 @@ async def test_run_loop_sleeps_after_scan_error(settings):
             await agent.run()
 
     assert len(sleep_called) >= 1, "asyncio.sleep was not called after a scan failure"
+
+
+# ---------------------------------------------------------------------------
+# AlphaScoutAgent — _merge_signals None safety (fix: TypeError on None return)
+# ---------------------------------------------------------------------------
+
+def test_merge_signals_all_none_returns_empty(settings):
+    """_merge_signals must not raise TypeError when every module returns None."""
+    agent = AlphaScoutAgent(settings)
+    result = agent._merge_signals(None, None, None)
+    assert result == []
+
+
+def test_merge_signals_partial_none_preserves_valid_signals(settings):
+    """_merge_signals handles a mix of valid lists and None without dropping signals."""
+    agent = AlphaScoutAgent(settings)
+    signal = {"source": "test", "confidence": 1.0}
+    result = agent._merge_signals([signal], None, None)
+    assert result == [signal]
+
+
+def test_merge_signals_filters_below_threshold(settings):
+    """Signals below SENTIMENT_THRESHOLD are excluded from alerts."""
+    agent = AlphaScoutAgent(settings)
+    low = {"source": "test", "confidence": 0.1}
+    high = {"source": "test", "confidence": 1.0}
+    result = agent._merge_signals([low, high], [], [])
+    assert high in result
+    assert low not in result
+
+
+# ---------------------------------------------------------------------------
+# Settings — safe int/float conversion (fix: crash on bad env vars at import)
+# ---------------------------------------------------------------------------
+
+def test_get_int_bad_value_returns_default(monkeypatch):
+    """Non-numeric SCAN_INTERVAL_SECONDS falls back to default instead of crashing."""
+    monkeypatch.setenv("SCAN_INTERVAL_SECONDS", "fast")
+    assert _get_int("SCAN_INTERVAL_SECONDS", 60) == 60
+
+
+def test_get_float_bad_value_returns_default(monkeypatch):
+    """Non-numeric SENTIMENT_THRESHOLD falls back to default instead of crashing."""
+    monkeypatch.setenv("SENTIMENT_THRESHOLD", "high")
+    assert _get_float("SENTIMENT_THRESHOLD", 0.6) == 0.6
+
+
+def test_get_int_valid_value(monkeypatch):
+    monkeypatch.setenv("SCAN_INTERVAL_SECONDS", "120")
+    assert _get_int("SCAN_INTERVAL_SECONDS", 60) == 120
+
+
+def test_get_float_valid_value(monkeypatch):
+    monkeypatch.setenv("SENTIMENT_THRESHOLD", "0.8")
+    assert _get_float("SENTIMENT_THRESHOLD", 0.6) == 0.8
+
+
+# ---------------------------------------------------------------------------
+# Logger — logs/ directory creation (fix: FileNotFoundError in fresh envs)
+# ---------------------------------------------------------------------------
+
+def test_setup_logger_creates_logs_dir(tmp_path, monkeypatch):
+    """setup_logger must not raise FileNotFoundError when logs/ doesn't exist."""
+    monkeypatch.chdir(tmp_path)
+    setup_logger("INFO")
+    assert (tmp_path / "logs").is_dir()
