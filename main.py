@@ -7,10 +7,12 @@ import asyncio
 from loguru import logger
 from config.settings import Settings
 from agents.alpha_scout import AlphaScoutAgent
+from utils.logger import setup_logger
 
 
 async def main():
     settings = Settings()
+    setup_logger(settings.LOG_LEVEL)
     logger.info("🚀 404-g Agent starting up...")
 
     agent = AlphaScoutAgent(settings)

@@ -21,15 +21,27 @@ class AlphaScoutAgent:
     async def run(self):
         logger.info("Agent scan loop started. Interval: {}s", self.settings.SCAN_INTERVAL_SECONDS)
         while True:
-            await self._scan_cycle()
+            try:
+                await self._scan_cycle()
+            except asyncio.CancelledError:
+                logger.info("Agent run loop cancelled.")
+                raise
+            except Exception as e:
+                logger.error("Unhandled error in run loop: {}", e)
+            # Sleep is always reached so a scan failure doesn't cause a tight
+            # spin loop that hammers external APIs with no delay.
             await asyncio.sleep(self.settings.SCAN_INTERVAL_SECONDS)
 
     async def _scan_cycle(self):
         logger.info("--- Starting scan cycle ---")
         try:
-            sentiment_signals = await self.sentiment.scan()
-            wallet_signals = await self.wallet_monitor.scan()
-            token_signals = await self.token_detector.scan()
+            # Run all three I/O-bound scans concurrently instead of sequentially
+            # so cycle time is bounded by the slowest module, not their sum.
+            sentiment_signals, wallet_signals, token_signals = await asyncio.gather(
+                self.sentiment.scan(),
+                self.wallet_monitor.scan(),
+                self.token_detector.scan(),
+            )
 
             alerts = self._merge_signals(sentiment_signals, wallet_signals, token_signals)
             if alerts:
@@ -41,7 +53,9 @@ class AlphaScoutAgent:
     def _merge_signals(self, sentiment, wallets, tokens) -> list:
         """Combine all signals and return high-confidence alerts."""
         alerts = []
-        all_signals = sentiment + wallets + tokens
+        # Guard against None returns from any module so list concatenation
+        # doesn't raise TypeError and silence the other modules' results.
+        all_signals = (sentiment or []) + (wallets or []) + (tokens or [])
         for signal in all_signals:
             if signal.get("confidence", 0) >= self.settings.SENTIMENT_THRESHOLD:
                 alerts.append(signal)

@@ -2,7 +2,8 @@
 python-dotenv==1.0.0
 requests==2.31.0
 aiohttp==3.9.3
-asyncio==3.4.3
+# asyncio is a Python 3 built-in; the PyPI package is a Python 2 backport
+# and must not be installed as it can shadow the standard library module.
 
 # Sentiment Analysis
 transformers==4.38.2

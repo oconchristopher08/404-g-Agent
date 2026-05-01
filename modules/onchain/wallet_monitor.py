@@ -54,5 +54,18 @@ class WalletMonitor:
         }
         async with aiohttp.ClientSession() as session:
             async with session.get(ETHERSCAN_TX_URL, params=params) as resp:
+                resp.raise_for_status()
                 data = await resp.json()
-                return data.get("result", [])
+                # Etherscan returns status "0" with a string message (e.g.
+                # "Max rate limit reached") instead of a list when the request
+                # fails. Guard against that before iterating.
+                if data.get("status") != "1":
+                    logger.warning(
+                        "Etherscan error for {}: {}", address, data.get("message", "unknown")
+                    )
+                    return []
+                result = data.get("result", [])
+                if not isinstance(result, list):
+                    logger.warning("Unexpected Etherscan result type for {}: {}", address, type(result))
+                    return []
+                return result

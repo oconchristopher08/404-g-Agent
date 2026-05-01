@@ -37,24 +37,35 @@ class TokenDetector:
         return signals
 
     async def _fetch_trending_pairs(self) -> list:
-        url = f"{self.base_url}/dex/tokens/trending"
+        # /dex/tokens/trending does not exist. The correct endpoint for
+        # recently-boosted/trending pairs is /token-boosts/top/v1, but the
+        # most reliable public endpoint for active pairs is the search API.
+        # Using /dex/search with a broad query returns pairs with full pair
+        # data including priceChange and volume fields used by _score_pair.
+        url = f"{self.base_url}/dex/search"
         async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                data = await resp.json()
+            async with session.get(url, params={"q": "ETH"}) as resp:
+                resp.raise_for_status()
+                data = await resp.json(content_type=None)
                 return data.get("pairs", [])
 
     def _score_pair(self, pair: dict) -> float:
-        """Score a token pair based on volume change and price momentum."""
+        """Score a token pair based on volume change and price momentum.
+
+        Price change tiers are mutually exclusive: >100% awards 0.7 total,
+        >50% awards 0.5. Using elif prevents double-counting when both
+        conditions are true.
+        """
         try:
             price_change = float(pair.get("priceChange", {}).get("h24", 0))
             volume = float(pair.get("volume", {}).get("h24", 0))
             score = 0.0
-            if price_change > 50:
+            if price_change > 100:
+                score += 0.7
+            elif price_change > 50:
                 score += 0.5
             if volume > 500_000:
                 score += 0.3
-            if price_change > 100:
-                score += 0.2
             return min(score, 1.0)
         except Exception:
             return 0.0
