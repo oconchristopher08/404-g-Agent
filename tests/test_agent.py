@@ -509,3 +509,75 @@ class TestNotifier:
         assert "ETH" in msg
         assert "250,000" in msg
         assert "Etherscan" in msg
+
+
+# ---------------------------------------------------------------------------
+# AlphaScoutAgent — new source correlation (Hyperliquid + Nansen + listing)
+# ---------------------------------------------------------------------------
+
+class TestAlphaScoutCorrelationWithNewSources:
+    @pytest.mark.asyncio
+    async def test_listing_bonus_applied_when_hl_and_nansen_agree(self, settings):
+        """HL + Nansen signals on same token should get the +0.20 listing bonus."""
+        with patch("agents.alpha_scout.start_http_server"):
+            agent = AlphaScoutAgent(settings)
+        hl_sig = {"source": "hyperliquid", "token": "NEWGEM", "confidence": 0.65, "type": "pre_listing_oi"}
+        nansen_sig = {"source": "nansen", "token": "NEWGEM", "confidence": 0.65, "type": "smart_money_accumulation"}
+        alerts = await agent._correlate_and_filter([], [], [], [hl_sig], [nansen_sig])
+        assert len(alerts) == 1
+        assert alerts[0]["listing_signal"] is True
+        # base 0.65 + 0.15 (multi-source) + 0.20 (listing bonus) = 1.0 (capped)
+        assert alerts[0]["confidence"] == pytest.approx(1.0)
+
+    @pytest.mark.asyncio
+    async def test_listing_bonus_not_applied_for_single_listing_source(self, settings):
+        with patch("agents.alpha_scout.start_http_server"):
+            agent = AlphaScoutAgent(settings)
+        hl_sig = {"source": "hyperliquid", "token": "SOLO", "confidence": 0.70, "type": "top_mover"}
+        alerts = await agent._correlate_and_filter([], [], [], [hl_sig], [])
+        assert len(alerts) == 1
+        assert not alerts[0].get("listing_signal")
+
+    @pytest.mark.asyncio
+    async def test_scan_cycle_calls_all_six_modules(self, settings):
+        with patch("agents.alpha_scout.start_http_server"):
+            agent = AlphaScoutAgent(settings)
+        agent.sentiment.scan = AsyncMock(return_value=[])
+        agent.wallet_monitor.scan = AsyncMock(return_value=[])
+        agent.listing_detector.scan = AsyncMock(return_value=[])
+        agent.token_detector.scan = AsyncMock(return_value=[])
+        agent.hl_scanner.scan = AsyncMock(return_value=[])
+        agent.nansen_scanner.scan = AsyncMock(return_value=[])
+        agent.notifier.send_alert = AsyncMock()
+
+        await agent._scan_cycle()
+
+        agent.sentiment.scan.assert_called_once()
+        agent.wallet_monitor.scan.assert_called_once()
+        agent.listing_detector.scan.assert_called_once()
+        agent.token_detector.scan.assert_called_once()
+        agent.hl_scanner.scan.assert_called_once()
+        agent.nansen_scanner.scan.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_alerts_sorted_listing_first(self, settings):
+        with patch("agents.alpha_scout.start_http_server"):
+            agent = AlphaScoutAgent(settings)
+        hl_sig = {"source": "hyperliquid", "token": "LISTING", "confidence": 0.70, "type": "pre_listing_oi"}
+        nansen_sig = {"source": "nansen", "token": "LISTING", "confidence": 0.70, "type": "smart_money_accumulation"}
+        dex_sig = {"source": "dexscreener", "token": "REGULAR", "confidence": 0.95, "pair_address": "0xreg"}
+        alerts = await agent._correlate_and_filter([], [], [dex_sig], [hl_sig], [nansen_sig])
+        # Listing signal should come first regardless of raw confidence
+        assert alerts[0].get("listing_signal") is True
+
+    def test_dedup_key_uses_token_address_for_nansen(self, settings):
+        with patch("agents.alpha_scout.start_http_server"):
+            agent = AlphaScoutAgent(settings)
+        signal = {
+            "source": "nansen",
+            "token": "PEPE",
+            "token_address": "0xpepe123",
+            "type": "smart_money_accumulation",
+        }
+        key = agent._dedup_key(signal)
+        assert key == "token:0xpepe123:smart_money_accumulation"

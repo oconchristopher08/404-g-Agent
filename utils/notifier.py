@@ -87,6 +87,60 @@ class Notifier:
             if text:
                 lines.append(f'_"{text[:120]}"_')
 
+        elif source == "HYPERLIQUID":
+            sig_type = signal.get("type", "")
+            sig_text = signal.get("signal", "")
+            oi = signal.get("oi_usd")
+            mark_px = signal.get("mark_price")
+            funding = signal.get("hl_funding_rate")
+            divergence = signal.get("divergence_ratio")
+
+            if sig_text:
+                lines.append(f"Signal: `{sig_text}`")
+            if sig_type == "funding_divergence" and divergence:
+                cex_rate = signal.get("avg_cex_funding_rate", 0)
+                lines.append(f"HL rate: `{funding:.4%}` · CEX avg: `{cex_rate:.4%}` · Divergence: `{divergence:.1f}x`")
+            elif funding is not None:
+                lines.append(f"Funding rate: `{funding:.4%}` per 8h")
+            if mark_px:
+                lines.append(f"Mark price: `${mark_px}`")
+            if oi:
+                lines.append(f"Open interest: `${float(oi)/1e6:.1f}M`")
+            lines.append("[View on Hyperliquid](https://app.hyperliquid.xyz/trade)")
+
+        elif source == "NANSEN":
+            sig_type = signal.get("type", "")
+            sig_text = signal.get("signal", "")
+            flow_1h = signal.get("net_flow_1h_usd")
+            flow_24h = signal.get("net_flow_24h_usd")
+            traders = signal.get("smart_money_traders")
+            chain = signal.get("chain", "")
+            age = signal.get("token_age_days")
+            mcap = signal.get("market_cap_usd")
+
+            if sig_text:
+                lines.append(f"Signal: `{sig_text}`")
+            if chain:
+                lines.append(f"Chain: `{chain}`")
+            if flow_1h is not None:
+                arrow = "↑" if flow_1h > 0 else "↓"
+                lines.append(f"1h flow: `{arrow}${abs(float(flow_1h))/1e3:.0f}k`")
+            if flow_24h is not None:
+                arrow = "↑" if flow_24h > 0 else "↓"
+                lines.append(f"24h flow: `{arrow}${abs(float(flow_24h))/1e3:.0f}k`")
+            if traders:
+                lines.append(f"Smart money wallets: `{traders}`")
+            if age is not None:
+                lines.append(f"Token age: `{age} days`")
+            if mcap:
+                lines.append(f"Market cap: `${float(mcap)/1e6:.1f}M`")
+
+        # Listing signal badge — shown for any source when listing_signal=True
+        if signal.get("listing_signal"):
+            lines.append("🔔 *Pre-listing signal* — corroborated across multiple sources")
+        if corroborated := signal.get("corroborated_by"):
+            lines.append(f"Corroborated by: `{', '.join(corroborated)}`")
+
         return "\n".join(lines)
 
     async def _post(self, text: str) -> None:

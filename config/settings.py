@@ -55,3 +55,23 @@ class Settings:
 
         # ── Prometheus ────────────────────────────────────────────────
         self.METRICS_PORT: int = int(os.getenv("METRICS_PORT", "8000"))
+
+        # ── Nansen ────────────────────────────────────────────────────
+        # Required for smart money netflows and token screener
+        self.NANSEN_API_KEY: str = os.getenv("NANSEN_API_KEY", "")
+
+        # ── Hyperliquid ───────────────────────────────────────────────
+        # Public API — no key required, but URL is configurable
+        self.HYPERLIQUID_API_URL: str = os.getenv(
+            "HYPERLIQUID_API_URL", "https://api.hyperliquid.xyz/info"
+        )
+        # Minimum open interest (USD) for a perp to be flagged as a signal
+        self.HL_MIN_OI_USD: float = float(os.getenv("HL_MIN_OI_USD", "5000000"))
+        # Funding rate threshold — flag when |rate| exceeds this (annualised ~10%)
+        self.HL_FUNDING_THRESHOLD: float = float(os.getenv("HL_FUNDING_THRESHOLD", "0.0003"))
+
+        # ── Exchange listing detection ─────────────────────────────────
+        # Chains to watch for pre-listing deposit address activity
+        self.LISTING_WATCH_CHAINS: list = os.getenv(
+            "LISTING_WATCH_CHAINS", "ethereum"
+        ).split(",")
