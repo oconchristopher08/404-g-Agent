@@ -1,61 +1,57 @@
 """
-Central settings loaded from environment variables via .env
+Central settings loaded from environment variables via .env.
+All attributes are instance-level so env vars can be patched in tests.
 """
 
 import os
-from loguru import logger
 from dotenv import load_dotenv
 
 load_dotenv()
 
 
-def _get_int(name: str, default: int) -> int:
-    """Read an integer env var, falling back to *default* on invalid input."""
-    raw = os.getenv(name, str(default))
-    try:
-        return int(raw)
-    except ValueError:
-        logger.warning("Invalid value for {}: '{}' — using default {}", name, raw, default)
-        return default
-
-
-def _get_float(name: str, default: float) -> float:
-    """Read a float env var, falling back to *default* on invalid input."""
-    raw = os.getenv(name, str(default))
-    try:
-        return float(raw)
-    except ValueError:
-        logger.warning("Invalid value for {}: '{}' — using default {}", name, raw, default)
-        return default
-
-
 class Settings:
-    # Twitter / Social
-    TWITTER_API_KEY: str = os.getenv("TWITTER_API_KEY", "")
-    TWITTER_API_SECRET: str = os.getenv("TWITTER_API_SECRET", "")
-    TWITTER_ACCESS_TOKEN: str = os.getenv("TWITTER_ACCESS_TOKEN", "")
-    TWITTER_ACCESS_SECRET: str = os.getenv("TWITTER_ACCESS_SECRET", "")
+    def __init__(self):
+        # ── Twitter / Social ──────────────────────────────────────────
+        # v2 API — only bearer token is needed for read-only search
+        self.TWITTER_BEARER_TOKEN: str = os.getenv("TWITTER_BEARER_TOKEN", "")
+        # Legacy v1.1 keys kept for reference but no longer used
+        self.TWITTER_API_KEY: str = os.getenv("TWITTER_API_KEY", "")
+        self.TWITTER_API_SECRET: str = os.getenv("TWITTER_API_SECRET", "")
+        self.TWITTER_ACCESS_TOKEN: str = os.getenv("TWITTER_ACCESS_TOKEN", "")
+        self.TWITTER_ACCESS_SECRET: str = os.getenv("TWITTER_ACCESS_SECRET", "")
 
-    # Telegram
-    TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        # ── Telegram ──────────────────────────────────────────────────
+        self.TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        self.TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
 
-    # Blockchain
-    WEB3_PROVIDER_URL: str = os.getenv("WEB3_PROVIDER_URL", "")
-    ETHERSCAN_API_KEY: str = os.getenv("ETHERSCAN_API_KEY", "")
-    BSC_RPC_URL: str = os.getenv("BSC_RPC_URL", "")
+        # ── Blockchain ────────────────────────────────────────────────
+        self.WEB3_PROVIDER_URL: str = os.getenv("WEB3_PROVIDER_URL", "")
+        self.ETHERSCAN_API_KEY: str = os.getenv("ETHERSCAN_API_KEY", "")
+        self.BSC_RPC_URL: str = os.getenv("BSC_RPC_URL", "")
 
-    # DEX / Token Data
-    DEXSCREENER_API_URL: str = os.getenv(
-        "DEXSCREENER_API_URL", "https://api.dexscreener.com/latest"
-    )
-    COINGECKO_API_KEY: str = os.getenv("COINGECKO_API_KEY", "")
+        # ── DEX / Token Data ──────────────────────────────────────────
+        self.DEXSCREENER_API_URL: str = os.getenv(
+            "DEXSCREENER_API_URL", "https://api.dexscreener.com/latest"
+        )
+        self.COINGECKO_API_KEY: str = os.getenv("COINGECKO_API_KEY", "")
 
-    # Redis
-    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        # ── Redis ─────────────────────────────────────────────────────
+        self.REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-    # Agent tuning — use safe helpers so a malformed env var doesn't crash at
-    # import time before any error handling is active.
-    SCAN_INTERVAL_SECONDS: int = _get_int("SCAN_INTERVAL_SECONDS", 60)
-    SENTIMENT_THRESHOLD: float = _get_float("SENTIMENT_THRESHOLD", 0.6)
-    WHALE_WALLET_MIN_USD: float = _get_float("WHALE_WALLET_MIN_USD", 100000.0)
-    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+        # ── Whale watchlist ───────────────────────────────────────────
+        self.WHALE_WATCHLIST_PATH: str = os.getenv(
+            "WHALE_WATCHLIST_PATH", "data/whales.json"
+        )
+
+        # ── Price oracle ──────────────────────────────────────────────
+        # How long (seconds) to cache fetched token prices before refreshing
+        self.ETH_PRICE_TTL_SECONDS: int = int(os.getenv("ETH_PRICE_TTL_SECONDS", "300"))
+
+        # ── Agent tuning ──────────────────────────────────────────────
+        self.SCAN_INTERVAL_SECONDS: int = int(os.getenv("SCAN_INTERVAL_SECONDS", "60"))
+        self.SENTIMENT_THRESHOLD: float = float(os.getenv("SENTIMENT_THRESHOLD", "0.6"))
+        self.WHALE_WALLET_MIN_USD: float = float(os.getenv("WHALE_WALLET_MIN_USD", "100000"))
+        self.LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+
+        # ── Prometheus ────────────────────────────────────────────────
+        self.METRICS_PORT: int = int(os.getenv("METRICS_PORT", "8000"))
