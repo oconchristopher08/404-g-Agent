@@ -3,6 +3,7 @@ SentimentAnalyzer — pulls social data from Twitter/X and scores
 crypto-related mentions using VADER sentiment analysis.
 """
 
+import asyncio
 import tweepy
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from loguru import logger
@@ -36,9 +37,16 @@ class SentimentAnalyzer:
             return signals
 
         queries = ["$BTC", "$ETH", "$SOL", "crypto gem", "100x altcoin"]
+        loop = asyncio.get_event_loop()
         for query in queries:
             try:
-                tweets = self.twitter.search_tweets(q=query, lang="en", count=50)
+                # tweepy.API.search_tweets is synchronous. Run it in a thread
+                # pool executor so it doesn't block the asyncio event loop and
+                # stall the concurrent wallet and token scans.
+                tweets = await loop.run_in_executor(
+                    None,
+                    lambda q=query: self.twitter.search_tweets(q=q, lang="en", count=50),
+                )
                 for tweet in tweets:
                     score = self.vader.polarity_scores(tweet.text)
                     compound = score["compound"]
@@ -48,7 +56,8 @@ class SentimentAnalyzer:
                             "query": query,
                             "text": tweet.text[:120],
                             "confidence": abs(compound),
-                            "sentiment": "bullish" if compound > 0 else "bearish",
+                            # compound == 0.0 is neutral, not bearish
+                            "sentiment": "bullish" if compound > 0 else ("bearish" if compound < 0 else "neutral"),
                         })
             except Exception as e:
                 logger.error("Sentiment scan error for {}: {}", query, e)
